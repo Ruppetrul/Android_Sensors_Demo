@@ -1,10 +1,10 @@
 package com.example.myapplication
 
-import android.Manifest.permission.CAMERA
-import android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+import android.Manifest.permission.*
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.*
+import android.location.Location
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -18,6 +18,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.myapplication.databinding.ActivityMainBinding
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -37,6 +39,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var pitchValue: TextView
     private lateinit var rollValue: TextView
 
+    private lateinit var longitude: TextView
+    private lateinit var latitude: TextView
+
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
@@ -45,6 +52,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         azimuthValue = findViewById(R.id.azimut)
         pitchValue   = findViewById(R.id.pitch)
         rollValue    = findViewById(R.id.roll)
+
+        longitude    = findViewById(R.id.longitude)
+        latitude     = findViewById(R.id.latitude)
 
         if (ContextCompat.checkSelfPermission(this, CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(CAMERA), 1)
@@ -62,12 +72,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
     override fun onResume() {
         super.onResume()
         sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
         sensorManager.registerListener(this, magnetometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
+
+        fusedLocationClient.lastLocation
+            .addOnSuccessListener { location : Location? ->
+                if (location != null) {
+                    longitude.text = location.longitude.toString()
+                    latitude.text = location.latitude.toString()
+                    Log.d("LOCATION", "longitude: $longitude lattitude: $latitude")
+                }
+            }
     }
 
     override fun onPause() {
@@ -130,8 +150,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val rollDegrees = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
 
             azimuthValue.text = azimuthDegrees.toString()
-            pitchValue.text  = pitchDegrees.toString()
-            rollValue.text   = rollDegrees.toString()
+            pitchValue.text   = pitchDegrees.toString()
+            rollValue.text    = rollDegrees.toString()
             Log.d("Orientation", "Azimuth: $azimuthDegrees, Pitch: $pitchDegrees, Roll: $rollDegrees")
         }
     }

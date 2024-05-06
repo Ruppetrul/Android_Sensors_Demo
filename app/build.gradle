@@ -43,6 +43,7 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.navigation:navigation-fragment-ktx:2.4.1'
     implementation 'androidx.navigation:navigation-ui-ktx:2.4.1'
+    implementation 'com.google.android.gms:play-services-location:19.0.1'
 
     def camerax_version = "1.2.2"
     implementation "androidx.camera:camera-core:${camerax_version}"

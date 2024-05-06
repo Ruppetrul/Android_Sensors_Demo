@@ -15,4 +15,7 @@
     <string name="roll">Roll</string>
     <string name="pitch_hint">20</string>
     <string name="roll_hint">30</string>
+    <string name="gps">GPS</string>
+    <string name="longitude">Longitude: </string>
+    <string name="latitude">Latitude: </string>
 </resources>
