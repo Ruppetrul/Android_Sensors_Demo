@@ -1,68 +1,73 @@
 package com.example.myapplication
 
-import android.Manifest.permission.BODY_SENSORS
+import android.Manifest.permission.CAMERA
+import android.Manifest.permission.WRITE_EXTERNAL_STORAGE
 import android.content.Context
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
+import android.hardware.*
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.navigation.findNavController
-import androidx.navigation.ui.AppBarConfiguration
-import androidx.navigation.ui.navigateUp
-import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.myapplication.databinding.ActivityMainBinding
-import com.google.android.material.snackbar.Snackbar
+
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), SensorEventListener {
-
-    private lateinit var appBarConfiguration: AppBarConfiguration
-    private lateinit var binding: ActivityMainBinding
-
     private lateinit var sensorManager: SensorManager
-    private var gameRotation: Sensor? = null
+    private lateinit var accelerometerSensor: Sensor
+    private lateinit var magnetometerSensor: Sensor
+
+    private val accelerometerReading = FloatArray(3)
+    private val magnetometerReading = FloatArray(3)
+
+    private lateinit var cameraExecutor: ExecutorService
+    private lateinit var viewBinding: ActivityMainBinding
+
+    private lateinit var azimuthValue: TextView
+    private lateinit var pitchValue: TextView
+    private lateinit var rollValue: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val deviceSensors: List<Sensor> = sensorManager.getSensorList(Sensor.TYPE_ALL)
-
-        Log.d("SENSOR", "START");
-        for (sensor in deviceSensors) {
-            Log.d("SENSOR", "Sensor Name: ${sensor.name}, Type: ${sensor.type}, Vendor: ${sensor.vendor}," +
-                    " Version: ${sensor.version}, Maximum: ${sensor.maximumRange}, Resolution ${sensor.resolution}")
-        }
-        Log.d("SENSOR", "END");
         super.onCreate(savedInstanceState)
+        viewBinding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(viewBinding.root)
 
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        gameRotation = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+        azimuthValue = findViewById(R.id.azimut)
+        pitchValue   = findViewById(R.id.pitch)
+        rollValue    = findViewById(R.id.roll)
 
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        setSupportActionBar(binding.toolbar)
-
-        val navController = findNavController(R.id.nav_host_fragment_content_main)
-        appBarConfiguration = AppBarConfiguration(navController.graph)
-        setupActionBarWithNavController(navController, appBarConfiguration)
-
-        binding.fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null).show()
+        if (ContextCompat.checkSelfPermission(this, CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(CAMERA), 1)
         }
+
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+
+        accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)!!
+        magnetometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)!!
+
+        if (allPermissionsGranted()) {
+            startCamera()
+        } else {
+            requestPermissions()
+        }
+
+        cameraExecutor = Executors.newSingleThreadExecutor()
     }
+
     override fun onResume() {
         super.onResume()
-
-        sensorManager.registerListener(this, gameRotation,
-            SensorManager.SENSOR_DELAY_NORMAL);
+        sensorManager.registerListener(this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        sensorManager.registerListener(this, magnetometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
     }
 
     override fun onPause() {
@@ -70,83 +75,113 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         sensorManager.unregisterListener(this)
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        //
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        return when (item.itemId) {
-            R.id.action_settings -> true
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        val navController = findNavController(R.id.nav_host_fragment_content_main)
-        return navController.navigateUp(appBarConfiguration)
-                || super.onSupportNavigateUp()
-    }
-
-    override fun onSensorChanged(p0: SensorEvent?) {
-        if (p0 != null) {
-            if (p0.sensor.type == Sensor.TYPE_GAME_ROTATION_VECTOR) {
-                val rotationMatrix = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, p0.values)
-
-                val orientation = FloatArray(3)
-                SensorManager.getOrientation(rotationMatrix, orientation)
-
-                // Преобразуем радианы в градусы
-                val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat() //0 - 360
-                val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat() // наклон по вертиркали. Вертикальное положение = -90. Вниз головой - 90
-                val roll = Math.toDegrees(orientation[2].toDouble()).toFloat() // Поворот вбок. Вправо - положительно. Влево - отриц.
-
-                Log.d("SENSOR", "TRIGGER onSensorChanged: ${p0.sensor.name}, values: Azimuth = $azimuth, Pitch = $pitch, Roll = $roll")
-            }
-
-            if (p0.sensor.type == Sensor.TYPE_ROTATION_VECTOR) {
-                val rotationMatrix = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(rotationMatrix, p0.values)
-
-                // Получаем ориентацию устройства
-                val orientation = FloatArray(3)
-                SensorManager.getOrientation(rotationMatrix, orientation)
-
-                // Преобразуем радианы в градусы
-                val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
-                val roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
-
-                Log.d("SENSOR", "TRIGGER onSensorChanged: ${p0.sensor.name}, values: Azimuth = $azimuth, Pitch = $pitch, Roll = $roll")
-            }
-        }
-    }
-
-    override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
-    }
-
-    // Обработка результата запроса разрешений
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            1 -> {
-                // Если запрос разрешения отменен, результаты массива grantResults будут пустыми
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Разрешение предоставлено, вы можете инициализировать использование датчиков здесь
-                } else {
-                    // Разрешение не предоставлено
-                    // Здесь можно предпринять действия, если пользователь отказал в предоставлении разрешения
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event != null) {
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> {
+                    System.arraycopy(event.values, 0, accelerometerReading, 0, accelerometerReading.size)
+                }
+                Sensor.TYPE_MAGNETIC_FIELD -> {
+                    System.arraycopy(event.values, 0, magnetometerReading, 0, magnetometerReading.size)
                 }
             }
+
+            updateOrientationAngles()
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
+    }
+
+    private val activityResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions())
+        { permissions ->
+            var permissionGranted = true
+            permissions.entries.forEach {
+                if (it.key in REQUIRED_PERMISSIONS && !it.value)
+                    permissionGranted = false
+            }
+            if (!permissionGranted) {
+                Toast.makeText(baseContext,
+                    "Permission request denied",
+                    Toast.LENGTH_SHORT).show()
+            } else {
+                startCamera()
+            }
+        }
+
+    private fun updateOrientationAngles() {
+        val rotationMatrix = FloatArray(9)
+        val orientationAngles = FloatArray(3)
+
+        val success = SensorManager.getRotationMatrix(rotationMatrix, null, accelerometerReading, magnetometerReading)
+        if (success) {
+            SensorManager.getOrientation(rotationMatrix, orientationAngles)
+
+            val azimuthDegrees = Math.toDegrees(orientationAngles[0].toDouble()).toFloat()
+            val pitchDegrees = Math.toDegrees(orientationAngles[1].toDouble()).toFloat()
+            val rollDegrees = Math.toDegrees(orientationAngles[2].toDouble()).toFloat()
+
+            azimuthValue.text = azimuthDegrees.toString()
+            pitchValue.text  = pitchDegrees.toString()
+            rollValue.text   = rollDegrees.toString()
+            Log.d("Orientation", "Azimuth: $azimuthDegrees, Pitch: $pitchDegrees, Roll: $rollDegrees")
+        }
+    }
+
+    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(
+            baseContext, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun startCamera() {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+
+        cameraProviderFuture.addListener({
+            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+            val preview = Preview.Builder()
+                .build()
+                .also {
+                    it.setSurfaceProvider(viewBinding.viewFinder.surfaceProvider)
+                }
+
+            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+            try {
+                cameraProvider.unbindAll()
+
+                cameraProvider.bindToLifecycle(
+                    this, cameraSelector, preview)
+
+            } catch(exc: Exception) {
+                Log.e(TAG, "Use case binding failed", exc)
+            }
+
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun requestPermissions() {
+        activityResultLauncher.launch(REQUIRED_PERMISSIONS)
+    }
+
+    companion object {
+        private const val TAG = "CameraXApp"
+
+        private val REQUIRED_PERMISSIONS =
+            mutableListOf (
+                CAMERA
+            ).apply {
+                if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                    add(WRITE_EXTERNAL_STORAGE)
+                }
+            }.toTypedArray()
     }
 }

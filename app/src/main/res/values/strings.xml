@@ -9,4 +9,10 @@
 
     <string name="hello_first_fragment">Hello first fragment</string>
     <string name="hello_second_fragment">Hello second fragment. Arg: %1$s</string>
+    <string name="azimut_hint">10</string>
+    <string name="azimut">Azimut</string>
+    <string name="pitch">Pitch</string>
+    <string name="roll">Roll</string>
+    <string name="pitch_hint">20</string>
+    <string name="roll_hint">30</string>
 </resources>
